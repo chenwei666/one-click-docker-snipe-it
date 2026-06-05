@@ -9,6 +9,6 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\SnipeIt-OneClick.ps1" -Action PrepareOffline
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\SnipeIt-OneClick.ps1" -Action BootstrapDeploy
 echo.
 pause

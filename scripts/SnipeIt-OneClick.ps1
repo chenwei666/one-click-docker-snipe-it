@@ -375,7 +375,9 @@ function Configure-WslDefaults {
 }
 
 function Register-ResumeAfterReboot {
-    $bat = Join-Path $Root "01-一键部署并启动Snipe-IT.bat"
+    param([string]$BatchFileName = "01-一键部署并启动Snipe-IT.bat")
+
+    $bat = Join-Path $Root $BatchFileName
     $runOnce = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
     $value = "cmd.exe /c `"`"$bat`"`""
     New-Item -Path $runOnce -Force | Out-Null
@@ -384,6 +386,8 @@ function Register-ResumeAfterReboot {
 }
 
 function Enable-WindowsPrerequisites {
+    param([string]$ResumeBatchFileName = "01-一键部署并启动Snipe-IT.bat")
+
     Ensure-Administrator
     Write-WindowsProfile
     Ensure-WindowsServices
@@ -398,7 +402,7 @@ function Enable-WindowsPrerequisites {
     Configure-WslDefaults
 
     if ($changed) {
-        Register-ResumeAfterReboot
+        Register-ResumeAfterReboot -BatchFileName $ResumeBatchFileName
         Write-Warn "Windows 功能刚启用，需要重启后才能继续部署。"
         $answer = Read-Host "按 Enter 立即重启；输入 N 后按 Enter 稍后自己重启"
         if ($answer -notmatch "^[Nn]") {
@@ -978,6 +982,7 @@ function Invoke-Validate {
 
 function Invoke-PrepareOffline {
     Ensure-EnvFile
+    Enable-WindowsPrerequisites -ResumeBatchFileName "00-生成新电脑离线部署包.bat"
     Ensure-Docker
     Ensure-OfflineFolders
 
@@ -1123,16 +1128,4 @@ catch {
     Write-Warn "常见处理：确认 Docker Desktop 已打开；确认 8088 未被占用；确认离线依赖包存在或网络能访问 Docker Hub。"
     exit 1
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

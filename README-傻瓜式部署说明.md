@@ -8,11 +8,23 @@ Snipe-IT 访问地址固定为：
 http://localhost:8088
 ```
 
-## 当前电脑先做一次
+## 方式 A：从 GitHub 下载后直接在线部署
+
+如果目标电脑可以访问互联网，从 GitHub 下载 ZIP 并解压后，直接双击任意一个：
+
+```text
+install.bat
+01-一键部署并启动Snipe-IT.bat
+```
+
+脚本会自动下载缺失的 Docker Desktop、Docker Compose 和 Docker 镜像。遇到重启提示时，重启后再次双击同一个脚本。
+
+## 方式 B：当前电脑先生成离线包
 
 在当前这台已经能联网、已经准备好的电脑上，先双击：
 
 ```text
+prepare-offline.bat
 00-生成新电脑离线部署包.bat
 ```
 
@@ -32,6 +44,7 @@ http://localhost:8088
 在新电脑上双击：
 
 ```text
+install.bat
 01-一键部署并启动Snipe-IT.bat
 ```
 
@@ -64,6 +77,8 @@ http://localhost:8088
 
 ## 常用按钮
 
+- `install.bat`：英文别名，一键部署。
+- `prepare-offline.bat`：英文别名，生成离线依赖包。
 - `00-生成新电脑离线部署包.bat`：在当前电脑生成给新电脑复制用的离线依赖包。
 - `01-一键部署并启动Snipe-IT.bat`：启用 Windows 功能、安装 Docker、导入镜像、部署、打开网页。
 - `02-打开Snipe-IT网页.bat`：只打开 `http://localhost:8088`。
@@ -73,10 +88,12 @@ http://localhost:8088
 - `06-备份Snipe-IT数据.bat`：备份数据库和上传附件到 `backups` 文件夹。
 - `07-启用局域网访问.bat`：本机能打开但局域网打不开时，修复 `APP_URL` 和 Windows 防火墙。
 - `08-局域网访问诊断.bat`：检查 Docker、容器、端口、HTTP 和防火墙规则，并显示局域网访问地址。
+- `open-snipe-it.bat`、`status.bat`、`stop.bat`、`update.bat`、`backup.bat`、`enable-lan-access.bat`、`diagnose-lan.bat`：英文别名。
 
 ## 重要说明
 
 - Snipe-IT 没有 WordPress 那种“插件市场”。这里的“插件/依赖”指运行它必须要的 Docker Desktop、WSL2、Snipe-IT 镜像、数据库镜像和邮件测试镜像。
+- GitHub 下载包默认不包含 `offline-dependencies` 大文件夹。有互联网时直接运行 `install.bat`；无互联网时先运行 `prepare-offline.bat` 生成离线包。
 - 数据保存在 Docker 卷里，不会因为关闭网页而丢失。
 - 不要随便删除 Docker 卷，否则资产数据、附件和数据库都会丢失。
 - 局域网其他电脑访问地址是 `http://服务器IP:8088`，例如 `http://192.168.1.20:8088`。如果打不开，先双击 `07-启用局域网访问.bat`，再双击 `08-局域网访问诊断.bat` 看结果。
@@ -92,6 +109,7 @@ http://localhost:8088
 ## 升级版本
 
 当前固定版本是 `v8.6.1`。以后升级前先双击 `06-备份Snipe-IT数据.bat`，再修改 `.env` 和 `docker-compose.yml` 中的版本号，然后重新生成离线包。
+
 
 
 
