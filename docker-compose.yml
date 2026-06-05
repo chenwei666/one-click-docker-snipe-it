@@ -1,0 +1,47 @@
+# Snipe-IT one-click production deployment.
+# The scripts in this folder generate .env and run this file with Docker Compose.
+
+name: snipeit-oneclick
+
+volumes:
+  db_data:
+  storage:
+
+services:
+  app:
+    image: snipe/snipe-it:${APP_VERSION:-v8.6.1}
+    restart: unless-stopped
+    volumes:
+      - storage:/var/lib/snipeit
+    ports:
+      - "${APP_PORT:-8088}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+      mail:
+        condition: service_started
+    env_file:
+      - .env
+
+  db:
+    image: mariadb:11.4.7
+    restart: unless-stopped
+    volumes:
+      - db_data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+
+  mail:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_WEB_PORT:-8025}:8025"
