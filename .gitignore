@@ -5,3 +5,8 @@ downloads/
 offline-dependencies/
 局域网访问地址.txt
 .release-check/
+fix-upload-limit.log
+build/
+dist/
+*.spec
+__pycache__/

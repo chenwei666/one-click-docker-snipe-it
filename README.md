@@ -15,9 +15,24 @@
 - 自动导入离线 Docker 镜像；没有离线包时会联网拉取 Snipe-IT、MariaDB、Mailpit。
 - 固定 Snipe-IT 端口为 `8088`。
 - 自动配置局域网访问地址和 Windows 防火墙规则。
-- 提供状态查看、停止、更新、备份和局域网诊断脚本。
+- 提供状态查看、停止、更新、备份、上传限制修复和局域网诊断脚本。
 
 ## 快速开始
+
+### 方式 0：图形化 EXE 启动器
+
+如果文件夹里已有 `Snipe-IT-OneClick.exe`，直接双击它，按界面按钮执行部署、状态查看、局域网修复、上传限制修复等操作。
+
+图形化启动器支持中英文切换，并提供“访问设置”：可以修改 Snipe-IT 访问端口，也可以选择“仅本机访问”或“局域网访问”。局域网访问会绑定 `0.0.0.0` 并配置 Windows 防火墙；仅本机访问会绑定 `127.0.0.1` 并移除本项目的局域网放行规则。
+
+如果需要重新生成 EXE，双击：
+
+```text
+10-生成图形化EXE.bat
+build-exe.bat
+```
+
+重新生成 EXE 需要当前电脑已安装 Python 和 PyInstaller；运行 EXE 本身不需要 Python。
 
 ### 方式 A：直接在线部署
 
@@ -66,6 +81,9 @@
 - `06-备份Snipe-IT数据.bat` / `backup.bat`：备份数据库和附件。
 - `07-启用局域网访问.bat` / `enable-lan-access.bat`：修复 `APP_URL` 和 Windows 防火墙。
 - `08-局域网访问诊断.bat` / `diagnose-lan.bat`：检查 Docker、容器、端口、HTTP 和防火墙规则。
+- `09-修复上传限制为100M.bat` / `fix-upload-limit.bat`：把上传限制调整为 100MB，只重建原来的 `app` 容器，不新建另一套系统。
+- `10-生成图形化EXE.bat` / `build-exe.bat`：生成 `Snipe-IT-OneClick.exe` 图形化启动器。
+- 图形化启动器里的“访问设置”：修改 `APP_PORT`、`APP_BIND_IP` 和 `APP_URL`，并重建原来的 `app` 容器应用配置。
 
 ## GitHub 下载包里不包含什么
 
@@ -105,9 +123,24 @@ A one-click Docker deployment package for Snipe-IT on Windows 10/11, Windows Ser
 - Imports offline Docker images when available; otherwise pulls Snipe-IT, MariaDB, and Mailpit online.
 - Exposes Snipe-IT on fixed port `8088`.
 - Configures LAN access and Windows Firewall inbound rules.
-- Includes status, stop, update, backup, LAN repair, and diagnostic scripts.
+- Includes status, stop, update, backup, upload-limit repair, LAN repair, and diagnostic scripts.
 
 ## Quick Start
+
+### Option 0: GUI EXE launcher
+
+If `Snipe-IT-OneClick.exe` exists in the folder, double-click it and use the GUI buttons for deployment, status checks, LAN repair, upload-limit repair, and maintenance tasks.
+
+The GUI launcher supports Chinese/English switching and includes Access Settings. You can change the Snipe-IT port and choose Local only or LAN access. LAN access binds to `0.0.0.0` and configures Windows Firewall. Local only binds to `127.0.0.1` and removes this project's LAN firewall rule.
+
+To rebuild the EXE, double-click:
+
+```text
+10-生成图形化EXE.bat
+build-exe.bat
+```
+
+Rebuilding the EXE requires Python and PyInstaller on the build machine. Running the generated EXE does not require Python.
 
 ### Option A: Online one-click deployment
 
@@ -156,6 +189,9 @@ Use this if the target machine cannot reliably access Docker Hub, GitHub, or Doc
 - `06-备份Snipe-IT数据.bat` / `backup.bat`: backs up the database and uploaded files.
 - `07-启用局域网访问.bat` / `enable-lan-access.bat`: repairs `APP_URL` and Windows Firewall rules.
 - `08-局域网访问诊断.bat` / `diagnose-lan.bat`: diagnoses Docker, containers, ports, HTTP, and firewall rules.
+- `09-修复上传限制为100M.bat` / `fix-upload-limit.bat`: raises the upload limit to 100MB and recreates only the original `app` container.
+- `10-生成图形化EXE.bat` / `build-exe.bat`: builds the `Snipe-IT-OneClick.exe` GUI launcher.
+- Access Settings in the GUI launcher: updates `APP_PORT`, `APP_BIND_IP`, and `APP_URL`, then recreates the original `app` container to apply the change.
 
 ## What GitHub Downloads Do Not Include
 

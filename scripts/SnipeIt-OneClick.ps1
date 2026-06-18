@@ -1,6 +1,9 @@
 ﻿param(
-    [ValidateSet("Deploy", "Open", "Status", "Stop", "Update", "Backup", "Validate", "PrepareOffline", "BootstrapDeploy", "ConfigureLan", "Diagnose")]
-    [string]$Action = "Deploy"
+    [ValidateSet("Deploy", "Open", "Status", "Stop", "Update", "Backup", "Validate", "PrepareOffline", "BootstrapDeploy", "ConfigureLan", "ConfigureAccess", "Diagnose", "SetUploadLimit")]
+    [string]$Action = "Deploy",
+    [int]$Port = 0,
+    [ValidateSet("", "Local", "Lan")]
+    [string]$AccessMode = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +26,7 @@ $env:DOCKER_CONFIG = $DockerConfigDir
 $env:COMPOSE_PROJECT_NAME = "snipeit_oneclick"
 
 $AppPort = 8088
+$AppBindIp = "0.0.0.0"
 $LocalAppUrl = "http://localhost:$AppPort"
 $AppUrl = "http://localhost:$AppPort"
 $MailpitUrl = "http://localhost:8025"
@@ -495,11 +499,31 @@ function Read-EnvFile {
     return $map
 }
 
+function Set-AppPortRuntime {
+    param([int]$NewPort)
+
+    if ($NewPort -lt 1 -or $NewPort -gt 65535) {
+        throw "端口必须是 1 到 65535 之间的数字。"
+    }
+
+    $script:AppPort = $NewPort
+    $script:LocalAppUrl = "http://localhost:$NewPort"
+}
+
 function Sync-AppUrlFromEnv {
     Ensure-EnvFile
     $envMap = Read-EnvFile
+    if ($envMap.ContainsKey("APP_PORT") -and $envMap.APP_PORT -match "^\d+$") {
+        Set-AppPortRuntime -NewPort ([int]$envMap.APP_PORT)
+    }
+    if ($envMap.ContainsKey("APP_BIND_IP") -and -not [string]::IsNullOrWhiteSpace($envMap.APP_BIND_IP)) {
+        $script:AppBindIp = $envMap.APP_BIND_IP
+    }
     if ($envMap.ContainsKey("APP_URL") -and -not [string]::IsNullOrWhiteSpace($envMap.APP_URL)) {
         $script:AppUrl = $envMap.APP_URL
+    }
+    else {
+        $script:AppUrl = $script:LocalAppUrl
     }
 }
 
@@ -508,11 +532,12 @@ function Write-AccessInfoFile {
 
     $path = Join-Path $Root "局域网访问地址.txt"
     $lines = @(
-        "Snipe-IT 局域网访问地址",
+        "Snipe-IT 访问地址",
         "",
         $Url,
         "",
-        "同一局域网内其他电脑，请在浏览器打开上面的地址。",
+        "如果是局域网模式，同一局域网内其他电脑请在浏览器打开上面的地址。",
+        "如果是本机模式，只能在当前电脑打开。",
         "如果打不开，请在服务器上双击 08-局域网访问诊断.bat。"
     )
     Set-Content -Path $path -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
@@ -543,6 +568,49 @@ function Set-EnvValue {
     }
 
     Set-Content -Path $envPath -Value $updated -Encoding ASCII
+}
+
+function Set-UploadLimit {
+    $uploadMb = 100
+    $postMb = 120
+    $memoryMb = 256
+    $projectName = "snipeit_oneclick"
+
+    Write-Step "写入 Snipe-IT 上传大小限制"
+    Set-EnvValue -Key "PHP_UPLOAD_LIMIT" -Value "$uploadMb"
+    Set-EnvValue -Key "PHP_UPLOAD_MAX_FILESIZE" -Value "$uploadMb"
+    Set-EnvValue -Key "PHP_POST_MAX_SIZE" -Value "$postMb"
+    Set-EnvValue -Key "PHP_MEMORY_LIMIT" -Value "$memoryMb"
+    Write-Ok "已设置图片/文件上传限制为 ${uploadMb}MB。"
+    Write-Ok "POST 上限为 ${postMb}MB，PHP 内存上限为 ${memoryMb}MB。"
+
+    Write-Step "重建 Snipe-IT app 容器以应用新 .env"
+    Ensure-Docker
+    Write-Warn "如果之前误生成过 snipeit-oneclick 临时容器，会先停止它；不会删除数据卷。"
+    Invoke-Compose -Arguments @("-p", "snipeit-oneclick", "down", "--remove-orphans") -NoThrow | Out-Host
+    Invoke-Compose -Arguments @("-p", $projectName, "up", "-d", "db")
+    Invoke-Compose -Arguments @("-p", $projectName, "up", "-d", "--no-deps", "--force-recreate", "app")
+
+    Write-Step "清理应用缓存"
+    Invoke-Compose -Arguments @("-p", $projectName, "exec", "-T", "app", "php", "artisan", "config:clear") -NoThrow | Out-Host
+    Invoke-Compose -Arguments @("-p", $projectName, "exec", "-T", "app", "php", "artisan", "cache:clear") -NoThrow | Out-Host
+
+    Write-Step "验证 PHP 上传配置"
+    Invoke-Compose -Arguments @(
+        "-p",
+        $projectName,
+        "exec",
+        "-T",
+        "app",
+        "php",
+        "-r",
+        "echo 'upload_max_filesize='.ini_get('upload_max_filesize').PHP_EOL; echo 'post_max_size='.ini_get('post_max_size').PHP_EOL; echo 'memory_limit='.ini_get('memory_limit').PHP_EOL;"
+    ) -NoThrow | Out-Host
+
+    Write-Step "当前原项目容器状态"
+    Invoke-Compose -Arguments @("-p", $projectName, "ps") -NoThrow | Out-Host
+
+    Write-Ok "处理完成。请刷新 Snipe-IT 页面后重新选择图片上传。"
 }
 
 function Test-PrivateIPv4 {
@@ -622,13 +690,29 @@ function Get-LanIPv4Address {
     return $best.IP
 }
 
+function Remove-LanFirewallRules {
+    Ensure-Administrator
+
+    $ruleNames = @("Snipe-IT LAN", "Snipe-IT LAN 8088")
+    try {
+        foreach ($name in $ruleNames) {
+            Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue |
+                Remove-NetFirewallRule -Confirm:$false
+        }
+    }
+    catch {
+        foreach ($name in $ruleNames) {
+            & netsh advfirewall firewall delete rule name="$name" *> $null
+        }
+    }
+}
+
 function Ensure-LanFirewallRule {
     Ensure-Administrator
 
-    $ruleName = "Snipe-IT LAN 8088"
+    $ruleName = "Snipe-IT LAN"
     try {
-        Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue |
-            Remove-NetFirewallRule -Confirm:$false
+        Remove-LanFirewallRules
 
         New-NetFirewallRule `
             -DisplayName $ruleName `
@@ -641,7 +725,7 @@ function Ensure-LanFirewallRule {
     }
     catch {
         Write-Warn "PowerShell 防火墙命令失败，改用 netsh 方式。"
-        & netsh advfirewall firewall delete rule name="$ruleName" *> $null
+        Remove-LanFirewallRules
         & netsh advfirewall firewall add rule name="$ruleName" dir=in action=allow protocol=TCP localport=$AppPort profile=any | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Windows 防火墙规则创建失败，请确认已用管理员权限运行。"
@@ -650,31 +734,73 @@ function Ensure-LanFirewallRule {
     }
 }
 
-function Configure-LanAccess {
-    param([switch]$RestartApp)
+function Set-AccessConfiguration {
+    param(
+        [int]$NewPort,
+        [ValidateSet("Local", "Lan")]
+        [string]$Mode,
+        [switch]$RestartApp
+    )
 
     Ensure-EnvFile
-    $lanIp = Get-LanIPv4Address
-    $lanUrl = "http://${lanIp}:$AppPort"
+    Sync-AppUrlFromEnv
 
-    Write-Step "配置 Snipe-IT 局域网访问地址"
-    Set-EnvValue -Key "APP_URL" -Value $lanUrl
-    $script:AppUrl = $lanUrl
-    Write-AccessInfoFile -Url $lanUrl
-    Write-Ok "APP_URL 已设置为：$lanUrl"
+    if ($NewPort -eq 0) {
+        $NewPort = $AppPort
+    }
+    Set-AppPortRuntime -NewPort $NewPort
 
-    Write-Step "放行 Windows 防火墙端口"
-    Ensure-LanFirewallRule
+    if ([string]::IsNullOrWhiteSpace($Mode)) {
+        $Mode = "Lan"
+    }
+
+    Write-Step "写入访问配置"
+    Set-EnvValue -Key "APP_PORT" -Value "$NewPort"
+
+    if ($Mode -eq "Local") {
+        $url = "http://localhost:$NewPort"
+        Set-EnvValue -Key "APP_BIND_IP" -Value "127.0.0.1"
+        Set-EnvValue -Key "APP_URL" -Value $url
+        $script:AppBindIp = "127.0.0.1"
+        $script:AppUrl = $url
+
+        Write-Step "关闭局域网防火墙放行规则"
+        Remove-LanFirewallRules
+        Write-Ok "已设置为仅本机访问：$url"
+    }
+    else {
+        $lanIp = Get-LanIPv4Address
+        $url = "http://${lanIp}:$NewPort"
+        Set-EnvValue -Key "APP_BIND_IP" -Value "0.0.0.0"
+        Set-EnvValue -Key "APP_URL" -Value $url
+        $script:AppBindIp = "0.0.0.0"
+        $script:AppUrl = $url
+
+        Write-Step "放行 Windows 防火墙端口"
+        Ensure-LanFirewallRule
+        Write-Ok "已设置为局域网访问：$url"
+    }
+
+    Write-AccessInfoFile -Url $script:AppUrl
+    Write-Ok "APP_PORT 已设置为：$NewPort"
+    Write-Ok "APP_URL 已设置为：$script:AppUrl"
 
     if ($RestartApp) {
-        Write-Step "重启 Snipe-IT 以应用局域网地址"
+        Write-Step "重建 Snipe-IT app 容器以应用端口和访问模式"
         Ensure-Docker
-        Invoke-Compose -Arguments @("up", "-d")
+        Invoke-Compose -Arguments @("up", "-d", "--force-recreate", "app")
         Wait-AppReady
     }
 
-    Write-Ok "局域网访问地址：$lanUrl"
-    Write-Warn "请在同一局域网其他电脑浏览器打开：$lanUrl"
+    if ($Mode -eq "Lan") {
+        Write-Warn "请在同一局域网其他电脑浏览器打开：$script:AppUrl"
+    }
+}
+
+function Configure-LanAccess {
+    param([switch]$RestartApp)
+
+    Set-AccessConfiguration -NewPort 0 -Mode "Lan" -RestartApp:$RestartApp
 }
 
 function Install-DockerDesktopIfMissing {
@@ -1006,6 +1132,15 @@ function Invoke-ConfigureLan {
     Configure-LanAccess -RestartApp
 }
 
+function Invoke-ConfigureAccess {
+    $mode = $AccessMode
+    if ([string]::IsNullOrWhiteSpace($mode)) {
+        $mode = "Lan"
+    }
+
+    Set-AccessConfiguration -NewPort $Port -Mode $mode -RestartApp
+}
+
 function Test-HttpEndpoint {
     param([string]$Url)
 
@@ -1026,6 +1161,7 @@ function Invoke-Diagnose {
 
     Write-Step "部署包检查"
     Write-Host "部署目录：$Root"
+    Write-Host "监听地址：$AppBindIp"
     Write-Host "本机访问地址：$LocalAppUrl"
     Write-Host "配置访问地址：$AppUrl"
     Write-AccessInfoFile -Url $AppUrl
@@ -1080,19 +1216,23 @@ function Invoke-Diagnose {
     $configuredOk = Test-HttpEndpoint -Url $AppUrl
 
     Write-Step "Windows 防火墙检查"
-    $ruleName = "Snipe-IT LAN 8088"
-    try {
-        $rule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction Stop
-        $port = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule
-        if ($rule.Enabled -eq "True" -and $rule.Action -eq "Allow" -and $port.LocalPort -contains "$AppPort") {
-            Write-Ok "Windows 防火墙规则存在并已放行 TCP $AppPort。"
-        }
-        else {
-            Write-Warn "防火墙规则存在，但状态/端口不完全正确。请双击 07-启用局域网访问.bat。"
-        }
+    if ($AppBindIp -eq "127.0.0.1") {
+        Write-Ok "当前是仅本机访问模式，不需要放行局域网防火墙端口。"
     }
-    catch {
-        Write-Warn "未检测到防火墙放行规则。请双击 07-启用局域网访问.bat，并在 UAC 中点 是。"
+    else {
+        try {
+            $rule = Get-NetFirewallRule -DisplayName "Snipe-IT LAN" -ErrorAction Stop
+            $port = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule
+            if ($rule.Enabled -eq "True" -and $rule.Action -eq "Allow" -and $port.LocalPort -contains "$AppPort") {
+                Write-Ok "Windows 防火墙规则存在并已放行 TCP $AppPort。"
+            }
+            else {
+                Write-Warn "防火墙规则存在，但状态/端口不完全正确。请双击 07-启用局域网访问.bat。"
+            }
+        }
+        catch {
+            Write-Warn "未检测到防火墙放行规则。请双击 07-启用局域网访问.bat，并在 UAC 中点 是。"
+        }
     }
 
     Write-Step "结论"
@@ -1118,7 +1258,9 @@ try {
         "PrepareOffline" { Invoke-PrepareOffline }
         "BootstrapDeploy" { Invoke-BootstrapDeploy }
         "ConfigureLan" { Invoke-ConfigureLan }
+        "ConfigureAccess" { Invoke-ConfigureAccess }
         "Diagnose" { Invoke-Diagnose }
+        "SetUploadLimit" { Set-UploadLimit }
     }
 }
 catch {

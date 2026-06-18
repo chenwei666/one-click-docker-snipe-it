@@ -1,7 +1,7 @@
 # Snipe-IT one-click production deployment.
 # The scripts in this folder generate .env and run this file with Docker Compose.
 
-name: snipeit-oneclick
+name: snipeit_oneclick
 
 volumes:
   db_data:
@@ -14,7 +14,7 @@ services:
     volumes:
       - storage:/var/lib/snipeit
     ports:
-      - "${APP_PORT:-8088}:80"
+      - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-8088}:80"
     depends_on:
       db:
         condition: service_healthy

@@ -41,6 +41,21 @@ prepare-offline.bat
 
 ## 新电脑只点这个
 
+如果文件夹里已有图形化程序，优先双击：
+
+```text
+Snipe-IT-OneClick.exe
+```
+
+它会显示按钮界面，可以直接执行部署、打开网页、状态查看、局域网修复、上传限制修复、更新、备份和停止。
+
+界面支持中文/英文切换。“访问设置”可以修改端口，也可以选择：
+
+- `局域网访问`：同一局域网其他电脑可以打开系统。
+- `仅本机访问`：只有当前电脑可以打开系统。
+
+如果没有这个 EXE，可以继续使用下面的 `.bat` 脚本。
+
 在新电脑上双击：
 
 ```text
@@ -77,6 +92,7 @@ install.bat
 
 ## 常用按钮
 
+- `Snipe-IT-OneClick.exe`：图形化启动器。
 - `install.bat`：英文别名，一键部署。
 - `prepare-offline.bat`：英文别名，生成离线依赖包。
 - `00-生成新电脑离线部署包.bat`：在当前电脑生成给新电脑复制用的离线依赖包。
@@ -88,7 +104,8 @@ install.bat
 - `06-备份Snipe-IT数据.bat`：备份数据库和上传附件到 `backups` 文件夹。
 - `07-启用局域网访问.bat`：本机能打开但局域网打不开时，修复 `APP_URL` 和 Windows 防火墙。
 - `08-局域网访问诊断.bat`：检查 Docker、容器、端口、HTTP 和防火墙规则，并显示局域网访问地址。
-- `open-snipe-it.bat`、`status.bat`、`stop.bat`、`update.bat`、`backup.bat`、`enable-lan-access.bat`、`diagnose-lan.bat`：英文别名。
+- `09-修复上传限制为100M.bat`：把上传限制调整为 100MB，只重建原来的 `app` 容器，不新建另一套系统。
+- `open-snipe-it.bat`、`status.bat`、`stop.bat`、`update.bat`、`backup.bat`、`enable-lan-access.bat`、`diagnose-lan.bat`、`fix-upload-limit.bat`：英文别名。
 
 ## 重要说明
 
@@ -100,6 +117,7 @@ install.bat
 - 部署成功后，文件夹里会生成 `局域网访问地址.txt`，可以把里面的地址发给同事使用。
 - 默认界面语言设置为 `zh-CN`，时区为 `Asia/Shanghai`。需要英文界面可把 `.env` 里的 `APP_LOCALE` 改为 `en-US`。
 - 如果看到 `docker: unknown command: docker compose`，说明那台机器缺 Docker Compose 插件。请确认 `offline-dependencies\docker-compose.exe` 存在，然后重新双击 `01-一键部署并启动Snipe-IT.bat`。
+- 如果上传图片提示最大 2M，请双击 `09-修复上传限制为100M.bat`。它会更新 `.env` 并只重建原来的 Snipe-IT app 容器。
 
 ## 端口
 
