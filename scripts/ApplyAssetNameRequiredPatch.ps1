@@ -3,10 +3,15 @@
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($Root)) {
+    $Root = $env:SNIPEIT_ONECLICK_ROOT
+}
+
+if ([string]::IsNullOrWhiteSpace($Root)) {
     $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $Root = Split-Path -Parent $ScriptDir
 }
 
+$Root = $Root.Trim().Trim('"')
 $Root = [System.IO.Path]::GetFullPath($Root)
 Set-Location $Root
 
