@@ -54,6 +54,7 @@ TEXT = {
         "status": "查看运行状态",
         "validate": "环境检查",
         "upload": "修复上传限制 100M",
+        "name_required": "启用资产名称必填",
         "access": "访问设置",
         "access_title": "访问设置",
         "port": "访问端口",
@@ -104,6 +105,7 @@ TEXT = {
         "status": "Show Status",
         "validate": "Environment Check",
         "upload": "Fix Upload Limit 100M",
+        "name_required": "Require Asset Name",
         "access": "Access Settings",
         "access_title": "Access Settings",
         "port": "Port",
@@ -158,6 +160,7 @@ SECTIONS = [
         [
             ("access", "settings", "ConfigureAccess", False),
             ("upload", "ps", "SetUploadLimit", False),
+            ("name_required", "ps", "ApplyAssetNameRequiredPatch", False),
             ("lan", "ps", "ConfigureLan", False),
             ("diagnose", "ps", "Diagnose", False),
         ],

@@ -15,7 +15,7 @@
 - 自动导入离线 Docker 镜像；没有离线包时会联网拉取 Snipe-IT、MariaDB、Mailpit。
 - 固定 Snipe-IT 端口为 `8088`。
 - 自动配置局域网访问地址和 Windows 防火墙规则。
-- 提供状态查看、停止、更新、备份、上传限制修复和局域网诊断脚本。
+- 提供状态查看、停止、更新、备份、上传限制修复、资产名称必填补丁和局域网诊断脚本。
 
 ## 快速开始
 
@@ -24,6 +24,8 @@
 如果文件夹里已有 `Snipe-IT-OneClick.exe`，直接双击它，按界面按钮执行部署、状态查看、局域网修复、上传限制修复等操作。
 
 图形化启动器支持中英文切换，并提供“访问设置”：可以修改 Snipe-IT 访问端口，也可以选择“仅本机访问”或“局域网访问”。局域网访问会绑定 `0.0.0.0` 并配置 Windows 防火墙；仅本机访问会绑定 `127.0.0.1` 并移除本项目的局域网放行规则。
+
+如果你的业务要求资产名称必填，可以在图形化启动器里点击 `启用资产名称必填`，或双击 `11-启用资产名称必填补丁.bat`。该补丁不修改数据库结构，不会删除已有资产；但旧资产如果名称为空，之后编辑保存时需要补上资产名称。
 
 如果需要重新生成 EXE，双击：
 
@@ -83,6 +85,7 @@ build-exe.bat
 - `08-局域网访问诊断.bat` / `diagnose-lan.bat`：检查 Docker、容器、端口、HTTP 和防火墙规则。
 - `09-修复上传限制为100M.bat` / `fix-upload-limit.bat`：把上传限制调整为 100MB，只重建原来的 `app` 容器，不新建另一套系统。
 - `10-生成图形化EXE.bat` / `build-exe.bat`：生成 `Snipe-IT-OneClick.exe` 图形化启动器。
+- `11-启用资产名称必填补丁.bat` / `require-asset-name.bat`：把 Snipe-IT 原生资产名称字段改为必填校验。
 - 图形化启动器里的“访问设置”：修改 `APP_PORT`、`APP_BIND_IP` 和 `APP_URL`，并重建原来的 `app` 容器应用配置。
 
 ## GitHub 下载包里不包含什么
@@ -123,7 +126,7 @@ A one-click Docker deployment package for Snipe-IT on Windows 10/11, Windows Ser
 - Imports offline Docker images when available; otherwise pulls Snipe-IT, MariaDB, and Mailpit online.
 - Exposes Snipe-IT on fixed port `8088`.
 - Configures LAN access and Windows Firewall inbound rules.
-- Includes status, stop, update, backup, upload-limit repair, LAN repair, and diagnostic scripts.
+- Includes status, stop, update, backup, upload-limit repair, required asset-name patch, LAN repair, and diagnostic scripts.
 
 ## Quick Start
 
@@ -132,6 +135,8 @@ A one-click Docker deployment package for Snipe-IT on Windows 10/11, Windows Ser
 If `Snipe-IT-OneClick.exe` exists in the folder, double-click it and use the GUI buttons for deployment, status checks, LAN repair, upload-limit repair, and maintenance tasks.
 
 The GUI launcher supports Chinese/English switching and includes Access Settings. You can change the Snipe-IT port and choose Local only or LAN access. LAN access binds to `0.0.0.0` and configures Windows Firewall. Local only binds to `127.0.0.1` and removes this project's LAN firewall rule.
+
+If your business requires asset names, click `Require Asset Name` in the GUI launcher or run `11-启用资产名称必填补丁.bat`. The patch does not change the database schema and does not delete existing assets. Existing assets with an empty name will need a name the next time they are edited and saved.
 
 To rebuild the EXE, double-click:
 
@@ -191,6 +196,7 @@ Use this if the target machine cannot reliably access Docker Hub, GitHub, or Doc
 - `08-局域网访问诊断.bat` / `diagnose-lan.bat`: diagnoses Docker, containers, ports, HTTP, and firewall rules.
 - `09-修复上传限制为100M.bat` / `fix-upload-limit.bat`: raises the upload limit to 100MB and recreates only the original `app` container.
 - `10-生成图形化EXE.bat` / `build-exe.bat`: builds the `Snipe-IT-OneClick.exe` GUI launcher.
+- `11-启用资产名称必填补丁.bat` / `require-asset-name.bat`: makes the native Snipe-IT asset name field required.
 - Access Settings in the GUI launcher: updates `APP_PORT`, `APP_BIND_IP`, and `APP_URL`, then recreates the original `app` container to apply the change.
 
 ## What GitHub Downloads Do Not Include

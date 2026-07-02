@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("Deploy", "Open", "Status", "Stop", "Update", "Backup", "Validate", "PrepareOffline", "BootstrapDeploy", "ConfigureLan", "ConfigureAccess", "Diagnose", "SetUploadLimit")]
+    [ValidateSet("Deploy", "Open", "Status", "Stop", "Update", "Backup", "Validate", "PrepareOffline", "BootstrapDeploy", "ConfigureLan", "ConfigureAccess", "Diagnose", "SetUploadLimit", "ApplyAssetNameRequiredPatch")]
     [string]$Action = "Deploy",
     [int]$Port = 0,
     [ValidateSet("", "Local", "Lan")]
@@ -570,6 +570,38 @@ function Set-EnvValue {
     Set-Content -Path $envPath -Value $updated -Encoding ASCII
 }
 
+function Get-AppContainerId {
+    for ($i = 1; $i -le 60; $i++) {
+        $containerId = (Invoke-Compose -Arguments @("ps", "-q", "app") -NoThrow | Out-String).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($containerId)) {
+            return $containerId
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    throw "找不到 Snipe-IT app 容器，请先启动系统。"
+}
+
+function Apply-AssetNameRequiredPatch {
+    $patchFile = Join-Path $Root "patches\asset-name-required\apply.php"
+    if (-not (Test-Path -LiteralPath $patchFile)) {
+        throw "找不到资产名称必填补丁文件：$patchFile"
+    }
+
+    Write-Step "启用资产名称必填补丁"
+    Ensure-Docker
+    Invoke-Compose -Arguments @("up", "-d", "app")
+
+    $appContainer = Get-AppContainerId
+    Invoke-Checked "docker" @("cp", $patchFile, "${appContainer}:/tmp/snipeit-oneclick-asset-name-required.php")
+    Invoke-Compose -Arguments @("exec", "-T", "app", "php", "/tmp/snipeit-oneclick-asset-name-required.php")
+
+    Write-Step "清理应用缓存"
+    Invoke-Compose -Arguments @("exec", "-T", "app", "php", "artisan", "optimize:clear") -NoThrow | Out-Host
+
+    Write-Ok "资产名称已设置为必填。新增和编辑资产时，资产名称为空将无法保存。"
+}
+
 function Set-UploadLimit {
     $uploadMb = 100
     $postMb = 120
@@ -590,6 +622,7 @@ function Set-UploadLimit {
     Invoke-Compose -Arguments @("-p", "snipeit-oneclick", "down", "--remove-orphans") -NoThrow | Out-Host
     Invoke-Compose -Arguments @("-p", $projectName, "up", "-d", "db")
     Invoke-Compose -Arguments @("-p", $projectName, "up", "-d", "--no-deps", "--force-recreate", "app")
+    Apply-AssetNameRequiredPatch
 
     Write-Step "清理应用缓存"
     Invoke-Compose -Arguments @("-p", $projectName, "exec", "-T", "app", "php", "artisan", "config:clear") -NoThrow | Out-Host
@@ -789,6 +822,7 @@ function Set-AccessConfiguration {
         Write-Step "重建 Snipe-IT app 容器以应用端口和访问模式"
         Ensure-Docker
         Invoke-Compose -Arguments @("up", "-d", "--force-recreate", "app")
+        Apply-AssetNameRequiredPatch
         Wait-AppReady
     }
 
@@ -1019,6 +1053,7 @@ function Invoke-Deploy {
 
     Write-Step "启动 Snipe-IT"
     Invoke-Compose -Arguments @("up", "-d")
+    Apply-AssetNameRequiredPatch
 
     Wait-AppReady
     Start-Process $AppUrl
@@ -1060,6 +1095,7 @@ function Invoke-Update {
 
     Write-Step "重建并启动服务"
     Invoke-Compose -Arguments @("up", "-d")
+    Apply-AssetNameRequiredPatch
 
     Wait-AppReady
     Write-Ok "更新完成。当前 APP_VERSION 可在 .env 中查看或修改。"
@@ -1261,6 +1297,7 @@ try {
         "ConfigureAccess" { Invoke-ConfigureAccess }
         "Diagnose" { Invoke-Diagnose }
         "SetUploadLimit" { Set-UploadLimit }
+        "ApplyAssetNameRequiredPatch" { Apply-AssetNameRequiredPatch }
     }
 }
 catch {
