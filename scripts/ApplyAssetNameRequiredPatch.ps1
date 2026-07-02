@@ -1,4 +1,4 @@
-param([string]$Root = "")
+﻿param([string]$Root = "")
 
 $ErrorActionPreference = "Stop"
 

@@ -27,7 +27,7 @@ goto done
 
 :run_embedded
 echo [提示] 未找到 scripts\ApplyAssetNameRequiredPatch.ps1，正在使用本 bat 内置补丁...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$bat=$env:BAT_SELF; $out=$env:TEMP_RUNNER; $prefix='::PS::'; $payload=New-Object System.Collections.Generic.List[string]; foreach($line in [System.IO.File]::ReadLines($bat)){ if($line.StartsWith($prefix)){ $payload.Add($line.Substring($prefix.Length)) } }; if($payload.Count -eq 0){ throw 'payload missing' }; [System.IO.File]::WriteAllLines($out, $payload, [System.Text.UTF8Encoding]::new($false))"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$bat=$env:BAT_SELF; $out=$env:TEMP_RUNNER; $prefix='::PS::'; $payload=New-Object System.Collections.Generic.List[string]; foreach($line in [System.IO.File]::ReadLines($bat)){ if($line.StartsWith($prefix)){ $payload.Add($line.Substring($prefix.Length)) } }; if($payload.Count -eq 0){ throw 'payload missing' }; [System.IO.File]::WriteAllLines($out, $payload, [System.Text.UTF8Encoding]::new($true))"
 if errorlevel 1 goto extract_failed
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TEMP_RUNNER%" -Root "%ROOT%"
 set "EXITCODE=%ERRORLEVEL%"
