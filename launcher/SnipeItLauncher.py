@@ -160,7 +160,7 @@ SECTIONS = [
         [
             ("access", "settings", "ConfigureAccess", False),
             ("upload", "ps", "SetUploadLimit", False),
-            ("name_required", "ps", "ApplyAssetNameRequiredPatch", False),
+            ("name_required", "psfile", "scripts\\ApplyAssetNameRequiredPatch.ps1", False),
             ("lan", "ps", "ConfigureLan", False),
             ("diagnose", "ps", "Diagnose", False),
         ],
@@ -413,6 +413,8 @@ class Launcher(tk.Tk):
     def _dispatch_action(self, label_key: str, kind: str, command: str) -> None:
         if kind == "ps":
             self._run_ps_action(command, self._t(label_key))
+        elif kind == "psfile":
+            self._run_ps_file(ROOT / command, self._t(label_key))
         elif kind == "settings":
             self._show_access_settings()
         else:
@@ -436,6 +438,36 @@ class Launcher(tk.Tk):
         thread = threading.Thread(target=self._worker, args=(action, title, self.lang, extra_args or []), daemon=True)
         thread.start()
 
+    def _run_ps_file(self, script_path: Path, title: str) -> None:
+        if self.running:
+            messagebox.showinfo(self._t("window_title"), self._t("busy"))
+            return
+
+        if not script_path.exists():
+            messagebox.showerror(self._t("window_title"), self._t("missing_path").format(path=script_path))
+            return
+
+        self.running = True
+        self._set_ps_buttons_state("disabled")
+        self.progress.start(12)
+        self.status_var.set(self._t("running").format(title=title))
+        self._append_log(f"\n========== {title} ==========\n")
+
+        thread = threading.Thread(target=self._worker_file, args=(script_path, title, self.lang), daemon=True)
+        thread.start()
+
+    def _worker_file(self, script_path: Path, title: str, lang: str) -> None:
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+        ]
+
+        self._run_process(command, title, lang)
+
     def _worker(self, action: str, title: str, lang: str, extra_args: list[str]) -> None:
         command = [
             "powershell.exe",
@@ -448,6 +480,9 @@ class Launcher(tk.Tk):
             action,
         ] + extra_args
 
+        self._run_process(command, title, lang)
+
+    def _run_process(self, command: list[str], title: str, lang: str) -> None:
         try:
             process = subprocess.Popen(
                 command,
@@ -611,7 +646,7 @@ class Launcher(tk.Tk):
 
     def _set_ps_buttons_state(self, state: str) -> None:
         for button, _key, kind in self.action_buttons:
-            if kind in ("ps", "settings"):
+            if kind in ("ps", "psfile", "settings"):
                 button.configure(state=state)
 
 
