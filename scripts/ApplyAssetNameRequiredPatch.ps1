@@ -84,116 +84,76 @@ function Invoke-Compose {
 
 function New-EmbeddedPatchFile {
     $patchPath = Join-Path ([System.IO.Path]::GetTempPath()) "snipeit-oneclick-asset-name-required.php"
-    $php = @'
-<?php
-declare(strict_types=1);
-
-function find_app_root(): string
-{
-    $candidates = [getcwd(), '/var/www/html', '/var/www/html/snipe-it', '/app'];
-    foreach ($candidates as $root) {
-        if (!$root) {
-            continue;
-        }
-        $root = rtrim($root, '/\\');
-        if (is_file($root . '/app/Models/Asset.php')) {
-            return $root;
-        }
-    }
-    throw new RuntimeException('Snipe-IT application root was not found.');
-}
-
-function write_if_changed(string $path, string $content): bool
-{
-    $old = file_get_contents($path);
-    if ($old === $content) {
-        return false;
-    }
-    $backup = $path . '.oneclick.bak';
-    if (!is_file($backup)) {
-        copy($path, $backup);
-    }
-    file_put_contents($path, $content);
-    return true;
-}
-
-function patch_asset_model(string $root): void
-{
-    $path = $root . '/app/Models/Asset.php';
-    $content = file_get_contents($path);
-    if (preg_match("/'name'\s*=>\s*\[[^\]]*'required'/", $content)) {
-        echo "[OK] Asset model name validation is already required.\n";
-        return;
-    }
-    $updated = preg_replace(
-        "/'name'\s*=>\s*\[\s*'nullable'\s*,\s*'max:255'\s*\]/",
-        "'name' => ['required', 'string', 'max:255']",
-        $content,
-        1,
-        $count
-    );
-    if ($count !== 1 || $updated === null) {
-        throw new RuntimeException('Could not patch app/Models/Asset.php. The upstream validation rule changed.');
-    }
-    write_if_changed($path, $updated);
-    echo "[OK] Patched Asset model name validation.\n";
-}
-
-function patch_name_partial(string $root): void
-{
-    $path = $root . '/resources/views/partials/forms/edit/name.blade.php';
-    if (!is_file($path)) {
-        echo "[WARN] Name partial was not found; server-side validation is still patched.\n";
-        return;
-    }
-    $content = file_get_contents($path);
-    $updated = $content;
-    $labelNeedle = '<label for="name" class="col-md-3 control-label">{{ $translated_name }}</label>';
-    $labelReplacement = '<!-- oneclick-asset-name-required -->' . "\n" . '<label for="name" class="col-md-3 control-label">{{ $translated_name }} <span class="text-danger" aria-hidden="true">*</span></label>';
-    if (strpos($updated, 'oneclick-asset-name-required') === false && strpos($updated, $labelNeedle) !== false) {
-        $updated = str_replace($labelNeedle, $labelReplacement, $updated);
-    }
-    $updated = preg_replace('/\{!!\s*\(Helper::checkIfRequired\(\$item,\s*\'name\'\)\)\s*\?\s*\' required\'\s*:\s*\'\'\s*!!\}/', ' required aria-required="true"', $updated);
-    if (write_if_changed($path, $updated)) {
-        echo "[OK] Patched asset name form marker.\n";
-    } else {
-        echo "[OK] Asset name form marker is already patched.\n";
-    }
-}
-
-function patch_hardware_edit(string $root): void
-{
-    $path = $root . '/resources/views/hardware/edit.blade.php';
-    if (!is_file($path)) {
-        echo "[WARN] Hardware edit view was not found; server-side validation is still patched.\n";
-        return;
-    }
-    $content = file_get_contents($path);
-    $needle = '<div id="optional_details" class="col-md-12" style="display:none">';
-    $replacement = '<div id="optional_details" class="col-md-12" style="{{ $errors->has(\'name\') ? \'\' : \'display:none\' }}">';
-    if (strpos($content, $replacement) !== false) {
-        echo "[OK] Optional details error display is already patched.\n";
-        return;
-    }
-    if (strpos($content, $needle) === false) {
-        echo "[WARN] Optional details block was not found; server-side validation is still patched.\n";
-        return;
-    }
-    write_if_changed($path, str_replace($needle, $replacement, $content));
-    echo "[OK] Patched optional details error display.\n";
-}
-
-$root = find_app_root();
-echo "[INFO] Snipe-IT root: {$root}\n";
-patch_asset_model($root);
-patch_name_partial($root);
-patch_hardware_edit($root);
-echo "[OK] Asset name required patch applied.\n";
-'@
-    Set-Content -LiteralPath $patchPath -Value $php -Encoding UTF8
+    $chunks = @(
+        'PD9waHAKZGVjbGFyZShzdHJpY3RfdHlwZXM9MSk7CgpmdW5jdGlvbiBmaW5kX2FwcF9yb290KCk6IHN0cmluZwp7CiAgICAk'
+        'Y2FuZGlkYXRlcyA9IFsKICAgICAgICBnZXRjd2QoKSwKICAgICAgICBkaXJuYW1lKF9fRElSX18sIDIpLAogICAgICAgICcv'
+        'dmFyL3d3dy9odG1sJywKICAgICAgICAnL3Zhci93d3cvaHRtbC9zbmlwZS1pdCcsCiAgICAgICAgJy9hcHAnLAogICAgXTsK'
+        'CiAgICBmb3JlYWNoICgkY2FuZGlkYXRlcyBhcyAkcm9vdCkgewogICAgICAgIGlmICghJHJvb3QpIHsKICAgICAgICAgICAg'
+        'Y29udGludWU7CiAgICAgICAgfQogICAgICAgICRhc3NldCA9IHJ0cmltKCRyb290LCAnL1xcJykgLiAnL2FwcC9Nb2RlbHMv'
+        'QXNzZXQucGhwJzsKICAgICAgICBpZiAoaXNfZmlsZSgkYXNzZXQpKSB7CiAgICAgICAgICAgIHJldHVybiBydHJpbSgkcm9v'
+        'dCwgJy9cXCcpOwogICAgICAgIH0KICAgIH0KCiAgICB0aHJvdyBuZXcgUnVudGltZUV4Y2VwdGlvbignU25pcGUtSVQgYXBw'
+        'bGljYXRpb24gcm9vdCB3YXMgbm90IGZvdW5kLicpOwp9CgpmdW5jdGlvbiB3cml0ZV9pZl9jaGFuZ2VkKHN0cmluZyAkcGF0'
+        'aCwgc3RyaW5nICRjb250ZW50KTogYm9vbAp7CiAgICAkb2xkID0gZmlsZV9nZXRfY29udGVudHMoJHBhdGgpOwogICAgaWYg'
+        'KCRvbGQgPT09ICRjb250ZW50KSB7CiAgICAgICAgcmV0dXJuIGZhbHNlOwogICAgfQoKICAgICRiYWNrdXAgPSAkcGF0aCAu'
+        'ICcub25lY2xpY2suYmFrJzsKICAgIGlmICghaXNfZmlsZSgkYmFja3VwKSkgewogICAgICAgIGNvcHkoJHBhdGgsICRiYWNr'
+        'dXApOwogICAgfQoKICAgIGZpbGVfcHV0X2NvbnRlbnRzKCRwYXRoLCAkY29udGVudCk7CiAgICByZXR1cm4gdHJ1ZTsKfQoK'
+        'ZnVuY3Rpb24gcGF0Y2hfYXNzZXRfbW9kZWwoc3RyaW5nICRyb290KTogYm9vbAp7CiAgICAkcGF0aCA9ICRyb290IC4gJy9h'
+        'cHAvTW9kZWxzL0Fzc2V0LnBocCc7CiAgICAkY29udGVudCA9IGZpbGVfZ2V0X2NvbnRlbnRzKCRwYXRoKTsKCiAgICBpZiAo'
+        'cHJlZ19tYXRjaCgiLyduYW1lJ1xzKj0+XHMqXFtbXlxdXSoncmVxdWlyZWQnLyIsICRjb250ZW50KSkgewogICAgICAgIGVj'
+        'aG8gIltPS10gQXNzZXQgbW9kZWwgbmFtZSB2YWxpZGF0aW9uIGlzIGFscmVhZHkgcmVxdWlyZWQuXG4iOwogICAgICAgIHJl'
+        'dHVybiBmYWxzZTsKICAgIH0KCiAgICAkdXBkYXRlZCA9IHByZWdfcmVwbGFjZSgKICAgICAgICAiLyduYW1lJ1xzKj0+XHMq'
+        'XFtccyonbnVsbGFibGUnXHMqLFxzKidtYXg6MjU1J1xzKlxdLyIsCiAgICAgICAgIiduYW1lJyA9PiBbJ3JlcXVpcmVkJywg'
+        'J3N0cmluZycsICdtYXg6MjU1J10iLAogICAgICAgICRjb250ZW50LAogICAgICAgIDEsCiAgICAgICAgJGNvdW50CiAgICAp'
+        'OwoKICAgIGlmICgkY291bnQgIT09IDEgfHwgJHVwZGF0ZWQgPT09IG51bGwpIHsKICAgICAgICB0aHJvdyBuZXcgUnVudGlt'
+        'ZUV4Y2VwdGlvbignQ291bGQgbm90IHBhdGNoIGFwcC9Nb2RlbHMvQXNzZXQucGhwLiBUaGUgdXBzdHJlYW0gdmFsaWRhdGlv'
+        'biBydWxlIGNoYW5nZWQuJyk7CiAgICB9CgogICAgd3JpdGVfaWZfY2hhbmdlZCgkcGF0aCwgJHVwZGF0ZWQpOwogICAgZWNo'
+        'byAiW09LXSBQYXRjaGVkIEFzc2V0IG1vZGVsIG5hbWUgdmFsaWRhdGlvbi5cbiI7CiAgICByZXR1cm4gdHJ1ZTsKfQoKZnVu'
+        'Y3Rpb24gcGF0Y2hfbmFtZV9wYXJ0aWFsKHN0cmluZyAkcm9vdCk6IGJvb2wKewogICAgJHBhdGggPSAkcm9vdCAuICcvcmVz'
+        'b3VyY2VzL3ZpZXdzL3BhcnRpYWxzL2Zvcm1zL2VkaXQvbmFtZS5ibGFkZS5waHAnOwogICAgaWYgKCFpc19maWxlKCRwYXRo'
+        'KSkgewogICAgICAgIGVjaG8gIltXQVJOXSBOYW1lIHBhcnRpYWwgd2FzIG5vdCBmb3VuZDsgc2VydmVyLXNpZGUgdmFsaWRh'
+        'dGlvbiBpcyBzdGlsbCBwYXRjaGVkLlxuIjsKICAgICAgICByZXR1cm4gZmFsc2U7CiAgICB9CgogICAgJGNvbnRlbnQgPSBm'
+        'aWxlX2dldF9jb250ZW50cygkcGF0aCk7CiAgICAkdXBkYXRlZCA9ICRjb250ZW50OwoKICAgICRsYWJlbE5lZWRsZSA9IDw8'
+        'PCdCTEFERScKPGxhYmVsIGZvcj0ibmFtZSIgY2xhc3M9ImNvbC1tZC0zIGNvbnRyb2wtbGFiZWwiPnt7ICR0cmFuc2xhdGVk'
+        'X25hbWUgfX08L2xhYmVsPgpCTEFERTsKICAgICRsYWJlbFJlcGxhY2VtZW50ID0gPDw8J0JMQURFJwo8bGFiZWwgZm9yPSJu'
+        'YW1lIiBjbGFzcz0iY29sLW1kLTMgY29udHJvbC1sYWJlbCI+e3sgJHRyYW5zbGF0ZWRfbmFtZSB9fSA8c3BhbiBjbGFzcz0i'
+        'dGV4dC1kYW5nZXIiIGFyaWEtaGlkZGVuPSJ0cnVlIj4qPC9zcGFuPjwvbGFiZWw+CkJMQURFOwogICAgaWYgKHN0cnBvcygk'
+        'dXBkYXRlZCwgJ29uZWNsaWNrLWFzc2V0LW5hbWUtcmVxdWlyZWQnKSA9PT0gZmFsc2UgJiYgc3RycG9zKCR1cGRhdGVkLCAk'
+        'bGFiZWxOZWVkbGUpICE9PSBmYWxzZSkgewogICAgICAgICR1cGRhdGVkID0gc3RyX3JlcGxhY2UoJGxhYmVsTmVlZGxlLCAi'
+        'PCEtLSBvbmVjbGljay1hc3NldC1uYW1lLXJlcXVpcmVkIC0tPlxuIiAuICRsYWJlbFJlcGxhY2VtZW50LCAkdXBkYXRlZCk7'
+        'CiAgICB9CgogICAgJGlucHV0TmVlZGxlID0gPDw8J0JMQURFJwo8aW5wdXQgY2xhc3M9ImZvcm0tY29udHJvbCIgc3R5bGU9'
+        'IndpZHRoOjEwMCU7IiB0eXBlPSJ0ZXh0IiBuYW1lPSJuYW1lIiBhcmlhLWxhYmVsPSJuYW1lIiBpZD0ibmFtZSIgdmFsdWU9'
+        'Int7IG9sZCgnbmFtZScsICRpdGVtLT5uYW1lKSB9fSJ7ISEgIChIZWxwZXI6OmNoZWNrSWZSZXF1aXJlZCgkaXRlbSwgJ25h'
+        'bWUnKSkgPyAnIHJlcXVpcmVkJyA6ICcnICEhfSBtYXhsZW5ndGg9IjE5MSIgLz4KQkxBREU7CiAgICAkaW5wdXRSZXBsYWNl'
+        'bWVudCA9IDw8PCdCTEFERScKPGlucHV0IGNsYXNzPSJmb3JtLWNvbnRyb2wiIHN0eWxlPSJ3aWR0aDoxMDAlOyIgdHlwZT0i'
+        'dGV4dCIgbmFtZT0ibmFtZSIgYXJpYS1sYWJlbD0ibmFtZSIgaWQ9Im5hbWUiIHZhbHVlPSJ7eyBvbGQoJ25hbWUnLCAkaXRl'
+        'bS0+bmFtZSkgfX0iIGFyaWEtcmVxdWlyZWQ9InRydWUiIG1heGxlbmd0aD0iMTkxIiAvPgpCTEFERTsKICAgIGlmIChzdHJw'
+        'b3MoJHVwZGF0ZWQsICRpbnB1dE5lZWRsZSkgIT09IGZhbHNlKSB7CiAgICAgICAgJHVwZGF0ZWQgPSBzdHJfcmVwbGFjZSgk'
+        'aW5wdXROZWVkbGUsICRpbnB1dFJlcGxhY2VtZW50LCAkdXBkYXRlZCk7CiAgICB9CgogICAgaWYgKHdyaXRlX2lmX2NoYW5n'
+        'ZWQoJHBhdGgsICR1cGRhdGVkKSkgewogICAgICAgIGVjaG8gIltPS10gUGF0Y2hlZCBhc3NldCBuYW1lIGZvcm0gbWFya2Vy'
+        'LlxuIjsKICAgICAgICByZXR1cm4gdHJ1ZTsKICAgIH0KCiAgICBlY2hvICJbT0tdIEFzc2V0IG5hbWUgZm9ybSBtYXJrZXIg'
+        'aXMgYWxyZWFkeSBwYXRjaGVkLlxuIjsKICAgIHJldHVybiBmYWxzZTsKfQoKZnVuY3Rpb24gcGF0Y2hfaGFyZHdhcmVfZWRp'
+        'dChzdHJpbmcgJHJvb3QpOiBib29sCnsKICAgICRwYXRoID0gJHJvb3QgLiAnL3Jlc291cmNlcy92aWV3cy9oYXJkd2FyZS9l'
+        'ZGl0LmJsYWRlLnBocCc7CiAgICBpZiAoIWlzX2ZpbGUoJHBhdGgpKSB7CiAgICAgICAgZWNobyAiW1dBUk5dIEhhcmR3YXJl'
+        'IGVkaXQgdmlldyB3YXMgbm90IGZvdW5kOyBzZXJ2ZXItc2lkZSB2YWxpZGF0aW9uIGlzIHN0aWxsIHBhdGNoZWQuXG4iOwog'
+        'ICAgICAgIHJldHVybiBmYWxzZTsKICAgIH0KCiAgICAkY29udGVudCA9IGZpbGVfZ2V0X2NvbnRlbnRzKCRwYXRoKTsKICAg'
+        'ICRuZWVkbGUgPSAnPGRpdiBpZD0ib3B0aW9uYWxfZGV0YWlscyIgY2xhc3M9ImNvbC1tZC0xMiIgc3R5bGU9ImRpc3BsYXk6'
+        'bm9uZSI+JzsKICAgICRyZXBsYWNlbWVudCA9ICc8ZGl2IGlkPSJvcHRpb25hbF9kZXRhaWxzIiBjbGFzcz0iY29sLW1kLTEy'
+        'IiBzdHlsZT0ie3sgJGVycm9ycy0+aGFzKFwnbmFtZVwnKSA/IFwnXCcgOiBcJ2Rpc3BsYXk6bm9uZVwnIH19Ij4nOwoKICAg'
+        'IGlmIChzdHJwb3MoJGNvbnRlbnQsICRyZXBsYWNlbWVudCkgIT09IGZhbHNlKSB7CiAgICAgICAgZWNobyAiW09LXSBPcHRp'
+        'b25hbCBkZXRhaWxzIGVycm9yIGRpc3BsYXkgaXMgYWxyZWFkeSBwYXRjaGVkLlxuIjsKICAgICAgICByZXR1cm4gZmFsc2U7'
+        'CiAgICB9CgogICAgaWYgKHN0cnBvcygkY29udGVudCwgJG5lZWRsZSkgPT09IGZhbHNlKSB7CiAgICAgICAgZWNobyAiW1dB'
+        'Uk5dIE9wdGlvbmFsIGRldGFpbHMgYmxvY2sgd2FzIG5vdCBmb3VuZDsgc2VydmVyLXNpZGUgdmFsaWRhdGlvbiBpcyBzdGls'
+        'bCBwYXRjaGVkLlxuIjsKICAgICAgICByZXR1cm4gZmFsc2U7CiAgICB9CgogICAgJHVwZGF0ZWQgPSBzdHJfcmVwbGFjZSgk'
+        'bmVlZGxlLCAkcmVwbGFjZW1lbnQsICRjb250ZW50KTsKICAgIHdyaXRlX2lmX2NoYW5nZWQoJHBhdGgsICR1cGRhdGVkKTsK'
+        'ICAgIGVjaG8gIltPS10gUGF0Y2hlZCBvcHRpb25hbCBkZXRhaWxzIGVycm9yIGRpc3BsYXkuXG4iOwogICAgcmV0dXJuIHRy'
+        'dWU7Cn0KCiRyb290ID0gZmluZF9hcHBfcm9vdCgpOwplY2hvICJbSU5GT10gU25pcGUtSVQgcm9vdDogeyRyb290fVxuIjsK'
+        'CnBhdGNoX2Fzc2V0X21vZGVsKCRyb290KTsKcGF0Y2hfbmFtZV9wYXJ0aWFsKCRyb290KTsKcGF0Y2hfaGFyZHdhcmVfZWRp'
+        'dCgkcm9vdCk7CgplY2hvICJbT0tdIEFzc2V0IG5hbWUgcmVxdWlyZWQgcGF0Y2ggYXBwbGllZC5cbiI7Cg=='
+    )
+    $bytes = [Convert]::FromBase64String(($chunks -join ""))
+    [System.IO.File]::WriteAllBytes($patchPath, $bytes)
     return $patchPath
 }
-
 function Get-PatchFile {
     $packaged = Join-Path $Root "patches\asset-name-required\apply.php"
     if (Test-Path -LiteralPath $packaged) {
