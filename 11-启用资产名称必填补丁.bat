@@ -4,6 +4,7 @@ setlocal
 set "ROOT=%~dp0"
 set "RUNNER=%ROOT%scripts\ApplyAssetNameRequiredPatch.ps1"
 set "TEMP_RUNNER=%TEMP%\SnipeIT-ApplyAssetNameRequiredPatch.ps1"
+set "BAT_SELF=%~f0"
 set "EXITCODE=0"
 
 net session >nul 2>&1
@@ -26,7 +27,7 @@ goto done
 
 :run_embedded
 echo [提示] 未找到 scripts\ApplyAssetNameRequiredPatch.ps1，正在使用本 bat 内置补丁...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$prefix='::PS::'; $payload=New-Object System.Collections.Generic.List[string]; foreach($line in [System.IO.File]::ReadLines($args[0])){ if($line.StartsWith($prefix)){ $payload.Add($line.Substring($prefix.Length)) } }; if($payload.Count -eq 0){ throw 'payload missing' }; [System.IO.File]::WriteAllLines($args[1], $payload, [System.Text.UTF8Encoding]::new($false))" "%~f0" "%TEMP_RUNNER%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$bat=$env:BAT_SELF; $out=$env:TEMP_RUNNER; $prefix='::PS::'; $payload=New-Object System.Collections.Generic.List[string]; foreach($line in [System.IO.File]::ReadLines($bat)){ if($line.StartsWith($prefix)){ $payload.Add($line.Substring($prefix.Length)) } }; if($payload.Count -eq 0){ throw 'payload missing' }; [System.IO.File]::WriteAllLines($out, $payload, [System.Text.UTF8Encoding]::new($false))"
 if errorlevel 1 goto extract_failed
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TEMP_RUNNER%" -Root "%ROOT%"
 set "EXITCODE=%ERRORLEVEL%"
