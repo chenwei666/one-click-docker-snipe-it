@@ -1,12 +1,14 @@
-param()
+param([string]$Root = "")
 
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Root = Split-Path -Parent $ScriptDir
-Set-Location $Root
+if ([string]::IsNullOrWhiteSpace($Root)) {
+    $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $Root = Split-Path -Parent $ScriptDir
+}
 
-$PatchFile = Join-Path $Root "patches\asset-name-required\apply.php"
+$Root = [System.IO.Path]::GetFullPath($Root)
+Set-Location $Root
 
 function Write-Step {
     param([string]$Message)
@@ -80,6 +82,128 @@ function Invoke-Compose {
     }
 }
 
+function New-EmbeddedPatchFile {
+    $patchPath = Join-Path ([System.IO.Path]::GetTempPath()) "snipeit-oneclick-asset-name-required.php"
+    $php = @'
+<?php
+declare(strict_types=1);
+
+function find_app_root(): string
+{
+    $candidates = [getcwd(), '/var/www/html', '/var/www/html/snipe-it', '/app'];
+    foreach ($candidates as $root) {
+        if (!$root) {
+            continue;
+        }
+        $root = rtrim($root, '/\\');
+        if (is_file($root . '/app/Models/Asset.php')) {
+            return $root;
+        }
+    }
+    throw new RuntimeException('Snipe-IT application root was not found.');
+}
+
+function write_if_changed(string $path, string $content): bool
+{
+    $old = file_get_contents($path);
+    if ($old === $content) {
+        return false;
+    }
+    $backup = $path . '.oneclick.bak';
+    if (!is_file($backup)) {
+        copy($path, $backup);
+    }
+    file_put_contents($path, $content);
+    return true;
+}
+
+function patch_asset_model(string $root): void
+{
+    $path = $root . '/app/Models/Asset.php';
+    $content = file_get_contents($path);
+    if (preg_match("/'name'\s*=>\s*\[[^\]]*'required'/", $content)) {
+        echo "[OK] Asset model name validation is already required.\n";
+        return;
+    }
+    $updated = preg_replace(
+        "/'name'\s*=>\s*\[\s*'nullable'\s*,\s*'max:255'\s*\]/",
+        "'name' => ['required', 'string', 'max:255']",
+        $content,
+        1,
+        $count
+    );
+    if ($count !== 1 || $updated === null) {
+        throw new RuntimeException('Could not patch app/Models/Asset.php. The upstream validation rule changed.');
+    }
+    write_if_changed($path, $updated);
+    echo "[OK] Patched Asset model name validation.\n";
+}
+
+function patch_name_partial(string $root): void
+{
+    $path = $root . '/resources/views/partials/forms/edit/name.blade.php';
+    if (!is_file($path)) {
+        echo "[WARN] Name partial was not found; server-side validation is still patched.\n";
+        return;
+    }
+    $content = file_get_contents($path);
+    $updated = $content;
+    $labelNeedle = '<label for="name" class="col-md-3 control-label">{{ $translated_name }}</label>';
+    $labelReplacement = '<!-- oneclick-asset-name-required -->' . "\n" . '<label for="name" class="col-md-3 control-label">{{ $translated_name }} <span class="text-danger" aria-hidden="true">*</span></label>';
+    if (strpos($updated, 'oneclick-asset-name-required') === false && strpos($updated, $labelNeedle) !== false) {
+        $updated = str_replace($labelNeedle, $labelReplacement, $updated);
+    }
+    $updated = preg_replace('/\{!!\s*\(Helper::checkIfRequired\(\$item,\s*\'name\'\)\)\s*\?\s*\' required\'\s*:\s*\'\'\s*!!\}/', ' required aria-required="true"', $updated);
+    if (write_if_changed($path, $updated)) {
+        echo "[OK] Patched asset name form marker.\n";
+    } else {
+        echo "[OK] Asset name form marker is already patched.\n";
+    }
+}
+
+function patch_hardware_edit(string $root): void
+{
+    $path = $root . '/resources/views/hardware/edit.blade.php';
+    if (!is_file($path)) {
+        echo "[WARN] Hardware edit view was not found; server-side validation is still patched.\n";
+        return;
+    }
+    $content = file_get_contents($path);
+    $needle = '<div id="optional_details" class="col-md-12" style="display:none">';
+    $replacement = '<div id="optional_details" class="col-md-12" style="{{ $errors->has(\'name\') ? \'\' : \'display:none\' }}">';
+    if (strpos($content, $replacement) !== false) {
+        echo "[OK] Optional details error display is already patched.\n";
+        return;
+    }
+    if (strpos($content, $needle) === false) {
+        echo "[WARN] Optional details block was not found; server-side validation is still patched.\n";
+        return;
+    }
+    write_if_changed($path, str_replace($needle, $replacement, $content));
+    echo "[OK] Patched optional details error display.\n";
+}
+
+$root = find_app_root();
+echo "[INFO] Snipe-IT root: {$root}\n";
+patch_asset_model($root);
+patch_name_partial($root);
+patch_hardware_edit($root);
+echo "[OK] Asset name required patch applied.\n";
+'@
+    Set-Content -LiteralPath $patchPath -Value $php -Encoding UTF8
+    return $patchPath
+}
+
+function Get-PatchFile {
+    $packaged = Join-Path $Root "patches\asset-name-required\apply.php"
+    if (Test-Path -LiteralPath $packaged) {
+        return $packaged
+    }
+
+    Write-Warn "没有找到 patches\asset-name-required\apply.php，将使用脚本内置补丁。"
+    return New-EmbeddedPatchFile
+}
+
 function Find-AppContainerId {
     Write-Step "查找 Snipe-IT app 容器"
 
@@ -106,11 +230,8 @@ function Find-AppContainerId {
 }
 
 function Apply-Patch {
-    if (-not (Test-Path -LiteralPath $PatchFile)) {
-        throw "找不到补丁文件：$PatchFile。请复制完整最新版 Snipe-IT 文件夹。"
-    }
-
     Ensure-Docker
+    $patchFile = Get-PatchFile
 
     Write-Step "启动 app 服务（不会删除数据）"
     Invoke-Compose -Arguments @("up", "-d", "app") -NoThrow | Out-Host
@@ -118,7 +239,7 @@ function Apply-Patch {
     $appContainer = Find-AppContainerId
 
     Write-Step "复制并执行资产名称必填补丁"
-    Invoke-Checked "docker" @("cp", $PatchFile, "${appContainer}:/tmp/snipeit-oneclick-asset-name-required.php")
+    Invoke-Checked "docker" @("cp", $patchFile, "${appContainer}:/tmp/snipeit-oneclick-asset-name-required.php")
     Invoke-Checked "docker" @("exec", "-i", $appContainer, "php", "/tmp/snipeit-oneclick-asset-name-required.php")
 
     Write-Step "清理 Snipe-IT 缓存"
@@ -137,6 +258,6 @@ catch {
     Write-Host ""
     Write-Host "[错误] $($_.Exception.Message)" -ForegroundColor Red
     Write-Host ""
-    Write-Warn "请确认：Docker Desktop 已启动；Snipe-IT 已部署；已复制完整最新版文件夹，包括 patches 目录。"
+    Write-Warn "请确认：Docker Desktop 已启动；Snipe-IT 已部署；当前目录有 docker-compose.yml。"
     exit 1
 }
